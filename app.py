@@ -13,24 +13,33 @@ option = st.radio(
     ["🔗 วางลิงก์สินค้า/คลิป (ระบบดึงคอมเมนต์ออโต้)", "📝 วางข้อความรีวิวด้วยตนเอง"]
 )
 
-# จัดการ State เมื่อสลับเมนู
+# จัดการ State ล้างผลลัพธ์ทันทีเมื่อมีการสลับโหมด
 if "prev_option" not in st.session_state:
     st.session_state.prev_option = option
 elif st.session_state.prev_option != option:
     st.session_state.prev_option = option
     st.session_state.analyzed = False
+    st.session_state.current_review = ""
 
 review_input = ""
 
 if option == "🔗 วางลิงก์สินค้า/คลิป (ระบบดึงคอมเมนต์ออโต้)":
     url_input = st.text_input("วาง URL ลิงก์สินค้าหรือคลิป (Shopee / Lazada / TikTok):", key="url_key")
+    
+    # ตรวจสอบว่าถ้าเปลี่ยน URL สินค้าใหม่ ให้ล้างผลลัพธ์เดิมออกก่อนกดวิเคราะห์
+    if "last_url" not in st.session_state:
+        st.session_state.last_url = url_input
+    elif st.session_state.last_url != url_input:
+        st.session_state.last_url = url_input
+        st.session_state.analyzed = False
+
     if url_input:
         with st.spinner("กำลังเชื่อมต่อและดึงข้อมูลคอมเมนต์จากลิงก์..."):
-            time.sleep(1)
-            # จำลองตัวอย่างคอมเมนต์ที่มีการระบุราคาและความคุ้มค่า
-            review_input = f"""สินค้าจากลิงก์ ({url_input[:25]}...) ตรงปก แพ็คมาหนาแน่นดีมาก จัดส่งเร็ว
-ซื้อมาตอนลดราคาเหลือ 250 บาท ถือว่าคุ้มค่ามาก
-กล่องมีรอยยับนิดหน่อย แต่ของข้างในไม่พัง ใช้งานง่าย แนะนำร้านนี้ครับ"""
+            time.sleep(0.5)
+            # ตัวอย่างดึงข้อมูลจำลองโดยใช้ URL ปัจจุบันเพื่อให้ข้อมูลเปลี่ยนตามลิงก์ที่วางจริง
+            review_input = f"""สินค้าจากลิงก์ ({url_input[-20:]}) ตรงปก แพ็คมาหนาแน่นดีมาก จัดส่งเร็ว
+ซื้อมาในราคา 350 บาท ถือว่าคุ้มค่าสมราคา
+กล่องมีรอยยับนิดหน่อย แต่ของข้างในไม่พัง ใช้งานง่าย"""
             st.success("ดึงข้อมูลคอมเมนต์จากลิงก์สำเร็จ!")
 else:
     review_input = st.text_area("วางข้อความรีวิวสินค้าที่นี่ (รองรับหลายบรรทัด/ลิงก์):", height=200, key="text_key")
@@ -43,12 +52,11 @@ if st.button("🔍 วิเคราะห์ข้อมูลรีวิว"
         st.session_state.analyzed = True
         st.session_state.current_review = review_input
 
-# แสดงผลลัพธ์การวิเคราะห์
+# แสดงผลลัพธ์การวิเคราะห์เมื่อกดปุ่มวิเคราะห์ข้อมูลใหม่เท่านั้น
 if st.session_state.get("analyzed", False) and st.session_state.get("current_review"):
     current_data = st.session_state.current_review
 
     # --- 1. ตรวจจับราคา (Price Extraction) ---
-    # ค้นหารูปแบบตัวเลขตามด้วยคำว่า บาท, ฿, บ., หรือ .-
     price_pattern = r'(\d{1,3}(?:,\d{3})*|\d+)\s*(?:บาท|฿|บ\.|.-)'
     found_prices = re.findall(price_pattern, current_data)
 
@@ -95,7 +103,6 @@ if st.session_state.get("analyzed", False) and st.session_state.get("current_rev
         elif has_neg:
             found_cons.append(line)
 
-        # เช็คความรู้สึกเกี่ยวกับราคา
         if any(w in line for w in cheap_keywords):
             price_sentiments.append("🟢 ผู้รีวิวรู้สึกว่า **ราคาคุ้มค่า / ถูก**")
         elif any(w in line for w in expensive_keywords):
@@ -114,10 +121,9 @@ if st.session_state.get("analyzed", False) and st.session_state.get("current_rev
     spam_penalty = len(fake_warnings) * 25
     trust_score = max(10, 100 - spam_penalty)
 
-    # --- ส่วนแสดงผลบนหน้าเว็บ Streamlit ---
+    # --- ส่วนแสดงผลบนหน้าเว็บ ---
     st.divider()
 
-    # แสดงกล่องสรุปเรื่องราคา
     st.subheader("🏷️ สรุปข้อมูลราคาและความคุ้มค่า")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
